@@ -3,16 +3,19 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_score, recall_score, roc_auc_score, roc_curve
 import matplotlib.pyplot as plt
+from bokeh.plotting import figure, output_file, show
+from bokeh.models import Label, LabelSet
 import pandas as pd
 from pandas import DataFrame
 import numpy as np
 from pathlib import Path
 
+
 def show_all_col_data(df: DataFrame):
     # Use set_option to change option, option_context to change just in with: block
     # pd.set_option('display.max_columns', None)
     with pd.option_context('display.max_columns', None):
-        print(df.head())
+        print(df.head(15))
 
 
 def nodes_and_depth(model: RandomForestClassifier): 
@@ -29,20 +32,19 @@ def evaluate_model(predictions, probs, train_predictions, train_probs):
     """Compare machine learning model to baseline performance.
     Computes statistics and shows ROC curve."""
     
-    baseline = {}
-    
-    import pdb; pdb.set_trace()
     # Baseline just means predict everything in a single category and see how that shakes out?
+    baseline = {}
     baseline['recall'] = recall_score(test_labels, [1 for _ in range(len(test_labels))])
     baseline['precision'] = precision_score(test_labels, [1 for _ in range(len(test_labels))])
     baseline['roc'] = 0.5
     
+    # Test data set results
     results = {}
-    
     results['recall'] = recall_score(test_labels, predictions)
     results['precision'] = precision_score(test_labels, predictions)
     results['roc'] = roc_auc_score(test_labels, probs)
     
+    # Train data set results
     train_results = {}
     train_results['recall'] = recall_score(train_labels, train_predictions)
     train_results['precision'] = precision_score(train_labels, train_predictions)
@@ -54,16 +56,35 @@ def evaluate_model(predictions, probs, train_predictions, train_probs):
     # Calculate false positive rates and true positive rates
     base_fpr, base_tpr, _ = roc_curve(test_labels, [1 for _ in range(len(test_labels))])
     model_fpr, model_tpr, _ = roc_curve(test_labels, probs)
+    train_fpr, train_tpr, _ = roc_curve(train_labels, train_probs)
 
-    plt.figure(figsize = (8, 6))
-    plt.rcParams['font.size'] = 16
+    fg = figure(title="ROC curves", width=600, height=500, tools="pan, reset, save")
+    # plt.figure(figsize = (8, 6))
+    # plt.rcParams['font.size'] = 16
     
     # Plot both curves
-    plt.plot(base_fpr, base_tpr, 'b', label = 'baseline')
-    plt.plot(model_fpr, model_tpr, 'r', label = 'model')
-    plt.legend();
-    plt.xlabel('False Positive Rate'); plt.ylabel('True Positive Rate'); plt.title('ROC Curves');
+    fg.line(base_fpr, base_tpr, line_width=1.5, legend_label='baseline', line_color="green")
+    fg.line(model_fpr, model_tpr, line_width=1.5, legend_label='model', line_color="blue")
+    fg.line(train_fpr, train_tpr, line_width=1.5, legend_label='training', line_color="red")
+    # labels = LabelSet(x="False Positive Rate", y="True Positive Rate")
+    fg.xaxis.axis_label = "False Positive Rate" 
+    fg.yaxis.axis_label = "True Positive Rate"
+    # plt.plot(base_fpr, base_tpr, 'b', label = 'baseline')
+    # plt.plot(model_fpr, model_tpr, 'r', label = 'model')
+    # plt.legend();
+    # plt.xlabel('False Positive Rate'); plt.ylabel('True Positive Rate'); plt.title('ROC Curves');
+    import pdb; pdb.set_trace()
+    show(fg)
 
+
+def drop_missing_data(df: DataFrame, th: float) -> DataFrame:
+    colnames = df.columns
+    miss_colnames = []
+    for colname in colnames:
+        miss_pct = df[colname].isnull().sum()/len(df[colname])
+        if miss_pct > th:
+            miss_colnames.append(colname)
+    return df.drop(columns = miss_colnames)
 
 cur_path = Path(".")
 all_paths = list(map(lambda p : p.as_posix(), list(cur_path.glob("2012.csv"))))
@@ -77,14 +98,24 @@ df['_RFHLTH'] = df['_RFHLTH'].replace({2: 0})
 df = df.loc[df['_RFHLTH'].isin([0, 1])].copy()
 df = df.rename(columns = {'_RFHLTH': 'label'})
 df['label'].value_counts()
-import pdb; pdb.set_trace()
+
+# Get only numeric columns; others cannot be interpreted without transformation
+df = df.select_dtypes('number')
+
+# Drop columns that seem to be aliases for the good/poor health label
+df = df.drop(columns = ['POORHLTH', 'PHYSHLTH', 'GENHLTH', 'PAINACT2', 
+                        'QLMENTL2', 'QLSTRES2', 'QLHLTH2', 'HLTHPLN1', 'MENTHLTH'])
+
+# Drop columns that are more than 50% missing data
+df = drop_missing_data(df, 0.5)
+# A quick data check to see if things look okay
 show_all_col_data(df)
 
-# And drop columns that should not be used in the model - some of these seem
-# to be aliases for the label column
-
 labels = np.array(df.pop('label'))
-train_df, test_df, train_labels, test_labels = train_test_split(df, labels, test_size=0.4)
+train_df, test_df, train_labels, test_labels = train_test_split(df, labels, stratify=labels, test_size=0.4)
+# Filling missing with a mean (probably not great practice)
+train_df = train_df.fillna(train_df.mean())
+test_df = test_df.fillna(test_df.mean())
 
 # Here is theensemble. It will create the Decision Trees under the hood automatically
 model = RandomForestClassifier(n_estimators=50, max_depth=20, bootstrap=True, max_features='sqrt')
@@ -98,7 +129,7 @@ rf_probs = rf_outputs[:,1]
 # Get the data for training data as well, see how performance and training performance relate
 rf_train_predicts = model.predict(train_df)
 rf_train_outputs = model.predict_proba(train_df)
-rf_train_probs = rf_outputs[:,1]
+rf_train_probs = rf_train_outputs[:,1]
 
 # The roc curve needs probabilities so it can see how results would change
 # at different sensetivities
