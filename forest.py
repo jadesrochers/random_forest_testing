@@ -11,7 +11,7 @@ import numpy as np
 from pathlib import Path
 
 
-def show_all_col_data(df: DataFrame):
+def show_all_col_data(df: DataFrame, head_count: int=15):
     # Use set_option to change option, option_context to change just in with: block
     # pd.set_option('display.max_columns', None)
     with pd.option_context('display.max_columns', None):
@@ -118,7 +118,7 @@ train_df = train_df.fillna(train_df.mean())
 test_df = test_df.fillna(test_df.mean())
 
 # Here is theensemble. It will create the Decision Trees under the hood automatically
-model = RandomForestClassifier(n_estimators=50, max_depth=20, bootstrap=True, max_features='sqrt')
+model = RandomForestClassifier(n_estimators=80, max_depth=10, bootstrap=True, max_features='sqrt')
 model.fit(train_df, train_labels)
 
 # Get categorical predictions on test/valid data, as well as probabalistic
