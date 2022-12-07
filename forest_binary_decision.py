@@ -77,7 +77,7 @@ def evaluate_model(predictions, probs, train_predictions, train_probs):
     show(fg)
 
 
-def drop_missing_data(df: DataFrame, th: float) -> DataFrame:
+def drop_columns_missing_data(df: DataFrame, th: float) -> DataFrame:
     colnames = df.columns
     miss_colnames = []
     for colname in colnames:
@@ -107,12 +107,13 @@ df = df.drop(columns = ['POORHLTH', 'PHYSHLTH', 'GENHLTH', 'PAINACT2',
                         'QLMENTL2', 'QLSTRES2', 'QLHLTH2', 'HLTHPLN1', 'MENTHLTH'])
 
 # Drop columns that are more than 50% missing data
-df = drop_missing_data(df, 0.5)
+df = drop_columns_missing_data(df, 0.5)
 # A quick data check to see if things look okay
 show_all_col_data(df)
 
 labels = np.array(df.pop('label'))
 train_df, test_df, train_labels, test_labels = train_test_split(df, labels, stratify=labels, test_size=0.4)
+
 # Filling missing with a mean (probably not great practice)
 train_df = train_df.fillna(train_df.mean())
 test_df = test_df.fillna(test_df.mean())
