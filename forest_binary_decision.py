@@ -162,4 +162,7 @@ export_graphviz(estimator, 'tree_from_optimized_forest.dot', rounded = True,
                 feature_names=train_df.columns, max_depth = 8, 
                 class_names = ['Poor health', 'Good health'], filled = True)
 
-
+from IPython.display import Image
+from subprocess import call
+call(['dot', '-Tpng', 'tree_from_optimized_forest.dot', '-o', 'tree_from_optimized_forest.png', '-Gdpi=200'])
+Image('tree_from_optimized_forest.png')
