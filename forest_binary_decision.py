@@ -1,7 +1,7 @@
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, RandomizedSearchCV
-from sklearn.metrics import precision_score, recall_score, roc_auc_score, roc_curve, confusion_matrix
+from sklearn.metrics import confusion_matrix
 from sklearn.tree import export_graphviz
 import matplotlib.pyplot as plt
 from bokeh.plotting import figure, output_file, show
@@ -12,12 +12,9 @@ import numpy as np
 from numpy import array as np_array
 from pathlib import Path
 
-
-def show_all_col_data(df: DataFrame, head_count: int=15):
-    # Use set_option to change option, option_context to change just in with: block
-    # pd.set_option('display.max_columns', None)
-    with pd.option_context('display.max_columns', None):
-        print(df.head(15))
+# Local libraries of stuff I put together
+import data_cleaning as dc
+import results_plotting as rp
 
 
 def nodes_and_depth(model: RandomForestClassifier): 
@@ -29,46 +26,6 @@ def nodes_and_depth(model: RandomForestClassifier):
     print(f'Avg num nodes: {int(np.mean(nodes))}')
     print(f'Avg maximum depth: {int(np.mean(nodes))}')
 
-
-# Create baseline roc figure with a line for default case
-def create_roc_performance_figure(title: str, test_labels):
-    baseline = {}
-    baseline['recall'] = recall_score(test_labels, [1 for _ in range(len(test_labels))])
-    baseline['precision'] = precision_score(test_labels, [1 for _ in range(len(test_labels))])
-    baseline['roc'] = 0.5
-    fg = figure(title=title, width=800, height=600, tools="pan, reset, save")
-    fg.xaxis.axis_label = "False Positive Rate" 
-    fg.yaxis.axis_label = "True Positive Rate"
-    # get a baseline curve for comparing the others against
-    base_fpr, base_tpr, _ = roc_curve(test_labels, [1 for _ in range(len(test_labels))])
-    fg.line(base_fpr, base_tpr, line_width=1.5, legend_label='baseline', line_color="green")
-    return fg
-
-
-def add_to_performance_figure(predictions, probs, labels, fg: figure, name, color: str):
-    """ Computes statistics and add ROC curve to figure from pred data"""
-    print('Adding: {} to figure'.format(name))
-    # Test data set results
-    results = {}
-    results['recall'] = recall_score(labels, predictions)
-    results['precision'] = precision_score(labels, predictions)
-    results['roc'] = roc_auc_score(labels, probs)
-    for metric in ['recall', 'precision', 'roc']:
-        print(f'{metric.capitalize()} Value: {round(results[metric], 2)}')
-    # Calculate false positive rates and true positive rates, add to plot
-    model_fpr, model_tpr, _ = roc_curve(labels, probs)
-    fg.line(model_fpr, model_tpr, line_width=1.5, legend_label=name, line_color=color)
-    return fg
-
-
-def drop_columns_missing_data(df: DataFrame, th: float) -> DataFrame:
-    colnames = df.columns
-    miss_colnames = []
-    for colname in colnames:
-        miss_pct = df[colname].isnull().sum()/len(df[colname])
-        if miss_pct > th:
-            miss_colnames.append(colname)
-    return df.drop(columns = miss_colnames)
 
 
 def get_predict_and_probs(model: RandomForestClassifier, data_df: DataFrame):
@@ -99,9 +56,9 @@ df = df.drop(columns = ['POORHLTH', 'PHYSHLTH', 'GENHLTH', 'PAINACT2',
                         'QLMENTL2', 'QLSTRES2', 'QLHLTH2', 'HLTHPLN1', 'MENTHLTH'])
 
 # Drop columns that are more than 50% missing data
-df = drop_columns_missing_data(df, 0.5)
+df = dc.drop_columns_missing_data(df, 0.5)
 # A quick data check to see if things look okay
-# show_all_col_data(df)
+# dc.show_all_col_data(df)
 
 labels = np.array(df.pop('label'))
 train_df, test_df, train_labels, test_labels = train_test_split(df, labels, stratify=labels, test_size=0.8)
@@ -120,19 +77,20 @@ train_predicts, train_probs = get_predict_and_probs(model, train_df)
 
 # The roc curve needs probabilities so it can see how results would change
 # at different sensitivities
-fg = create_roc_performance_figure('ROC Curve Random Forests', test_labels)
-fg = add_to_performance_figure(test_predicts, test_probs, test_labels, fg, 'Test performance', "blue")
-fg = add_to_performance_figure(train_predicts, train_probs, train_labels, fg, 'Train performance', "red")
+fg = rp.create_roc_performance_figure('ROC Curve Random Forests', test_labels)
+fg = rp.add_to_performance_figure(test_predicts, test_probs, test_labels, fg, 'Test performance', "blue")
+fg = rp.add_to_performance_figure(train_predicts, train_probs, train_labels, fg, 'Train performance', "red")
 # evaluate_model(rf_predicts, rf_probs, rf_train_predicts, rf_train_probs, 'ROC Curve Random Forest')
 show(fg)
 
 
+import pdb; pdb.set_trace()
 ## Use a Random Search to optimize model selection
 # The random search will select hyperparameters in a grid search pattern
 # in the ranges you specify
 param_grid = {
-    'n_estimators': np.linspace(10, 200).astype(int),
-    'max_depth': [None] + list(np.linspace(3, 20).astype(int)),
+    'n_estimators': np.linspace(10, 120).astype(int),
+    'max_depth': list(np.linspace(3, 25).astype(int)),
     'max_features': ['log2', 'sqrt', None] + list(np.arange(0.5, 1, 0.1)),
     'max_leaf_nodes': [None] + list(np.linspace(10, 50, 500).astype(int)),
     'min_samples_split': [2, 5, 10],
@@ -151,7 +109,7 @@ print(grid_search.best_params_)
 test_predicts, test_probs = get_predict_and_probs(best_model, test_df)
 
 import pdb; pdb.set_trace()
-fg = add_to_performance_figure(test_predicts, test_probs, test_labels, fg, 'Grid model', "violet")
+fg = rp.add_to_performance_figure(test_predicts, test_probs, test_labels, fg, 'Grid model', "violet")
 show(fg)
 
 
